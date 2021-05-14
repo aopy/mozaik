@@ -79,7 +79,7 @@ class Model(BaseComponent):
             min_delay=self.parameters.min_delay,
             max_delay=self.parameters.max_delay,
             threads=num_threads,
-            time_scale_factor=15.0
+            # time_scale_factor=15.0
         )  # should have some parameters here
         # workaround for SpiNNaker error: parameter n_neurons of 2048 is too big (maximum 2047)
         # sim.set_number_of_neurons_per_core(sim.Izhikevich, 2047)
