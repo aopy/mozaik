@@ -7,7 +7,7 @@ logging.basicConfig(filename='mozaik.log', level=logging.DEBUG)
 import os.path
 import pickle
 # import _pickle as cPickle
-
+from collections import OrderedDict
 from parameters import ParameterSet
 import numpy
 
@@ -470,54 +470,25 @@ class SpatioTemporalFilterRetinaLGN(SensoryInputComponent):
         # print("SIM ", dir(sim))
         # print(self.rf_types[8])  # induce error
         for rf_type in self.rf_types:
-            # print("rf_type ", rf_type)
             self.scs[rf_type] = []
             self.ncs[rf_type] = []
             self.ncs_rng[rf_type] = []
-            seeds = get_seeds((self.sheets[rf_type].pop.size,))
-            # print("self.sheets[rf_type] ", self.sheets[rf_type])
-            # print("self.sheets[rf_type].pop ", self.sheets[rf_type].pop)
-            # print("type(self.sheets[rf_type]) ", type(self.sheets[rf_type]))
-            # print("dir(self.sheets[rf_type]) ", dir(self.sheets[rf_type]))
-            # print("seeds ", seeds)
-            # print("self.sheets[rf_type].pop.all_cells ", self.sheets[rf_type].pop.all_cells)
-            # if not self.parameters.mpi_reproducible_noise:
-            #    ncs = sim.NoisyCurrentSource(**self.parameters.noise)
-            #    ncs = sim.SpikeSourcePoisson  # test this
-            #    sim.SpikeSourcePoisson
-            #    np = sim.Population.SpikeSourcePoisson(rate=0)
+            seeds = mozaik.get_seeds((self.sheets[rf_type].pop.size,))
+            for i, lgn_cell in enumerate(self.sheets[rf_type].pop.all_cells):
+                scs = sim.StepCurrentSource(times=[0.0], amplitudes=[0.0])
 
-            #    np = sim.Population(10, sim.SpikeSourcePoisson(rate=10.0), label="noise")
-            #    sim.Projection(np, self.sheets[rf_type].pop, sim.AllToAllConnector())
+                if not self.parameters.mpi_reproducible_noise:
+                    ncs = sim.NoisyCurrentSource(**self.parameters.noise)
+                else:
+                    ncs = sim.StepCurrentSource(times=[0.0], amplitudes=[0.0])
 
-            # print("SpikeSourcePoisson")
-            # self.sheets[rf_type].pop(sim.SpikeSourcePoisson(rate=0))
-            # for i, lgn_cell in enumerate(self.sheets[rf_type].pop.all_cells):
-            #     print("lgn_cell ", lgn_cell)
-            #     print("lgn_cell type ", type(lgn_cell))
-            #     print("lgn_cell i offset ", lgn_cell.i_offset)
-            #     print("not self.parameters.mpi_reproducible_noise", not self.parameters.mpi_reproducible_noise)
-            #     lgn_cell.i_offset = lgn_cell.i_offset + 1  # test
-            #     scs = sim.StepCurrentSource(times=[0.0], amplitudes=[0.0])  # update i_offset between calls to run()
-            #     print("self.parameters.noise ",  self.parameters.noise)
-            #     if not self.parameters.mpi_reproducible_noise:
-            #        ncs = sim.NoisyCurrentSource(**self.parameters.noise)
-            #        ncs = sim.SpikeSourcePoisson  # test this
-            #        sim.SpikeSourcePoisson
-            #     self.sheets[rf_type].pop(sim.SpikeSourcePoisson())
-            #     else:
-            #        pass
-            #        ncs = sim.StepCurrentSource(times=[0.0], amplitudes=[0.0])
-
-            #    if self.sheets[rf_type].pop._mask_local[i]:  # 'Population' object has no attribute '_mask_local'
-            #        self.ncs_rng[rf_type].append(
-            #            numpy.random.RandomState(seed=seeds[i])
-            #        )
-            #        self.scs[rf_type].append(scs)
-            #        self.ncs[rf_type].append(ncs)
-            #     lgn_cell.inject(scs)
-            #     lgn_cell.inject(ncs)  # does inject work with SpikeSourcePoisson
-            #     print("lgn_cell i offset 2", lgn_cell.i_offset)
+                if hasattr(self.sheets[rf_type].pop, "_mask_local"):
+                    if self.sheets[rf_type].pop._mask_local[i]:
+                        self.ncs_rng[rf_type].append(numpy.random.RandomState(seed=seeds[i]))
+                        self.scs[rf_type].append(scs)
+                        self.ncs[rf_type].append(ncs)
+                lgn_cell.inject(scs)
+                lgn_cell.inject(ncs)
 
         P_rf = self.parameters.receptive_field
         rf_function = eval(P_rf.func)
@@ -623,8 +594,6 @@ class SpatioTemporalFilterRetinaLGN(SensoryInputComponent):
         retinal_input : list(ndarray)
                       List of 2D arrays containing the frames of luminances that were presented to the retina.
         """
-        # self.model.sim.set_number_of_neurons_per_core(self.model.sim.Izhikevich, 2047)
-        # self.model.sim.set_number_of_neurons_per_core(self.model.sim.IF_cond_exp, 2047)
         logger.debug("Presenting visual stimulus from visual space %s" % visual_space)
         visual_space.set_duration(duration)
         self.input = visual_space
@@ -639,105 +608,53 @@ class SpatioTemporalFilterRetinaLGN(SensoryInputComponent):
             # This is mainly to avoid regenerating stimuli for multiple trials.
 
             if str(st) in self.internal_stimulus_cache:
-                (input_currents, retinal_input) = self.internal_stimulus_cache[str(st)]
+               (input_currents, retinal_input) =  self.internal_stimulus_cache[str(st)]
             else:
-                (input_currents, retinal_input) = self._calculate_input_currents(
-                    visual_space, duration
-                )
+               (input_currents, retinal_input) = self._calculate_input_currents(visual_space,
+                                                                                 duration)
         else:
             logger.debug("Retrieved spikes from cache...")
             (input_currents, retinal_input) = cached
 
-        # print("input_currents ", input_currents)
-        # print("input_currents X_ON ", input_currents['X_ON'])
-        # print("input_currents X_ON ", input_currents['X_ON'])
-        # logger.debug("input_currents X_ON ", input_currents['X_ON'])
-
         ts = self.model.sim.get_time_step()
-        # a = []
-        # t = []
-        # print("len(input_currents['X_ON'][0]['times'])", len(input_currents['X_ON'][0]['times']))
-        # print("len(input_currents['X_OFF'][0]['times'])", len(input_currents['X_OFF'][0]['times']))
-        # print("self.sheets[rf_type].pop len ", len(self.sheets['X_ON'].pop))
-        # print("input_currents[rf_type] len", len(input_currents['X_ON']))
-        # i_offset update and sim.run instead of stepcurrentsource
-        # print(self.rf_types[8])  # induce error
-        for n in range(len(input_currents['X_ON'][0]['times'])):
-            print("process input ", n)
-            if n == 1:
-                break
-            for rf_type in self.rf_types:
-                # assert isinstance(input_currents[rf_type], list)
-                # ts = input_current["times"] + offset
-                # ams = self.parameters.linear_scaler * input_current["amplitudes"]
-                # print("step current time ", ts)
-                # print("step current amplitude ", ams)
-                # np = sim.Population(10, sim.SpikeSourceArray(spike_times=t), label="spikes")  # test this
-                # sim.Projection(np, self.sheets[rf_type].pop, sim.AllToAllConnector())
 
-                # for i, (lgn_cell, input_current, scs, ncs) in enumerate(
-                for i, (lgn_cell, input_current) in enumerate(
-                    zip(
-                        self.sheets[rf_type].pop,
-                        input_currents[rf_type],
-                        # self.scs[rf_type],
-                        # self.ncs[rf_type]
-                    )
-                ):
-                    # if i == 2:
-                    #    break
-                    # assert isinstance(input_current, dict)
+        for rf_type in self.rf_types:
+            assert isinstance(input_currents[rf_type], list)
+            for i, (lgn_cell, input_current, scs, ncs) in enumerate(
+                                                            zip(self.sheets[rf_type].pop,
+                                                                input_currents[rf_type],
+                                                                self.scs[rf_type],
+                                                                self.ncs[rf_type])):
+                assert isinstance(input_current, dict)
+                t = input_current['times'] + offset
+                a = self.parameters.linear_scaler * input_current['amplitudes']
+                scs.set_parameters(times=t, amplitudes=a,copy=False)
+                if self.parameters.mpi_reproducible_noise:
+                    t = numpy.arange(0, duration, ts) + offset
+                    amplitudes = (self.parameters.noise.mean
+                                  + self.parameters.noise.stdev
+                                  * self.ncs_rng[rf_type][i].randn(len(t)))
+                    ncs.set_parameters(times=t, amplitudes=amplitudes, copy=False)
 
-                    # t = input_current["times"] + offset
-
-                    a = self.parameters.linear_scaler * input_current["amplitudes"]
-                    # logger.debug("input_current ", input_current)
-                    # print("step current time ", t)
-                    # logger.debug("step current time ", t)
-                    # print("step current amplitude ", a)
-                    # logger.debug("step current amplitude ", a)
-                    # print("self.parameters.mpi_reproducible_noise ", self.parameters.mpi_reproducible_noise)
-
-                    # lgn_cell.i_offset = a[0]
-                    lgn_cell.i_offset = a[n]
-                    # sim.reset ?
-
-                    # scs.set_parameters(times=t, amplitudes=a, copy=False)  # this has to change
-
-                    if False:
-                        # if self.parameters.mpi_reproducible_noise:
-                        t = numpy.arange(0, duration, ts) + offset
-                        amplitudes = self.parameters.noise.mean + self.parameters.noise.stdev * self.ncs_rng[
-                            rf_type
-                        ][
-                            i
-                        ].randn(
-                            len(t)
-                        )
-                        ncs.set_parameters(times=t, amplitudes=amplitudes, copy=False)  # this has to change
-            # self.model.sim.run(10)
-            self.model.simulator_time += self.model.sim.run(self.parameters.receptive_field.temporal_resolution)  # 7.0
 
         # for debugging/testing, doesn't work with MPI !!!!!!!!!!!!
-        # input_current_array = numpy.zeros((self.shape[1], self.shape[0], len(visual_space.time_points(duration))))
-        # update_factor = int(visual_space.update_interval/self.parameters.receptive_field.temporal_resolution)
-        # logger.debug("input_current_array.shape = %s, update_factor = %d, p.dim = %s" % (input_current_array.shape, update_factor, self.shape))
-        # k = 0
-        # for i in range(self.shape[1]): # self.sahpe gives (x,y), so self.shape[1] is the height
+        #input_current_array = numpy.zeros((self.shape[1], self.shape[0], len(visual_space.time_points(duration))))
+        #update_factor = int(visual_space.update_interval/self.parameters.receptive_field.temporal_resolution)
+        #logger.debug("input_current_array.shape = %s, update_factor = %d, p.dim = %s" % (input_current_array.shape, update_factor, self.shape))
+        #k = 0
+        #for i in range(self.shape[1]): # self.sahpe gives (x,y), so self.shape[1] is the height
         #    for j in range(self.shape[0]):
-        # where the kernel temporal resolution is finer than the frame update interval,
-        # we only keep the current values at the start of each frame
+                # where the kernel temporal resolution is finer than the frame update interval,
+                # we only keep the current values at the start of each frame
         #        input_current_array[i,j, :] = input_currents['X_ON'][k]['amplitudes'][::update_factor]
         #        k += 1
 
-        # move these to somewhere else (before the loop)?
         # if record() has already been called, setup the recording now
         self._built = True
         self.write_cache(st, input_currents, retinal_input)
         # also save into internal cache
         self.internal_stimulus_cache[str(st)] = (input_currents, retinal_input)
 
-        # return retinal_input, a, t
         return retinal_input
 
     def provide_null_input(self, visual_space, duration=None, offset=0):
@@ -758,109 +675,36 @@ class SpatioTemporalFilterRetinaLGN(SensoryInputComponent):
         retinal_input : list(ndarray)
                       List of 2D arrays containing the frames of luminances that were presented to the retina.
         """
-        print("XXX provide_null_input XXX ", duration)
-        logger.debug("XXX provide_null_input XXX ", duration)
-        # self.model.sim.set_number_of_neurons_per_core(self.model.Izhikevich, 2047)
-        # self.model.sim.set_number_of_neurons_per_core(self.model.IF_cond_exp, 2047)
-        # self.model.sim.set_number_of_neurons_per_core(self.sheets["X_ON"].pop.cellclass, 2047)
-        # self.model.sim.set_number_of_neurons_per_core(self.sheets["X_OFF"].pop.cellclass, 2047)
-        print("offset ", offset)
-        print("visual_space.update_interval ", visual_space.update_interval)
-        times = numpy.array(
-            [offset, duration - visual_space.update_interval + offset]
-        )  # numpy.arange(0, duration, visual_space.update_interval) + offset
-
-        # workaround because of multiple sim runs ?
-        # times2 = numpy.array(0, duration - visual_space.update_interval)
-        times2 = numpy.array(
-            [0, duration - visual_space.update_interval]
-        )
-        print("times2 ", times2)
+        times = numpy.array([offset,
+                             duration - visual_space.update_interval + offset])  # numpy.arange(0, duration, visual_space.update_interval) + offset
         zers = times * 0
         ts = self.model.sim.get_time_step()
-        i = len(times)
 
-        input_cells = {}
+        input_cells = OrderedDict()
         for rf_type in self.rf_types:
-            input_cells[rf_type] = CellWithReceptiveField(
-                # self.sheets[rf_type].pop.positions[0][0],
-                self.sheets[rf_type].pop.positions[0][0],
-                # self.sheets[rf_type].pop.positions[1][0],
-                self.sheets[rf_type].pop.positions[0][1],
-                self.rf[rf_type],
-                self.parameters.gain_control,
-                visual_space
-            )
+            input_cells[rf_type] = CellWithReceptiveField(self.sheets[rf_type].pop.positions[0][0],
+                                                          self.sheets[rf_type].pop.positions[1][0],
+                                                          self.rf[rf_type],
+                                                          self.parameters.gain_control, visual_space)
             input_cells[rf_type].initialize(visual_space.background_luminance, duration)
-            # if False:
-        for n, t in enumerate(times2):
-            print("provide null input ", n)
-            if n == 1:
-                break
-            for rf_type in self.rf_types:
-                if self.parameters.gain_control.non_linear_gain != None:
-                    # print("non_linear_gain != None ")
-                    amplitude = (
-                        self.parameters.linear_scaler
-                        * self.parameters.gain_control.non_linear_gain.luminance_gain
-                        * numpy.sum(input_cells[rf_type].receptive_field.kernel.flatten())
-                        * visual_space.background_luminance
-                        / (
-                            self.parameters.gain_control.non_linear_gain.luminance_scaler
-                            * visual_space.background_luminance
-                            + 1.0
-                        )
-                    )
-                else:
-                    amplitude = (
-                        self.parameters.linear_scaler
-                        * self.parameters.gain_control.gain
-                        * numpy.sum(input_cells[rf_type].receptive_field.kernel.flatten())
-                        * visual_space.background_luminance
-                    )
 
-                print("times ", times)
-                print("times len", len(times))
-                logger.debug("times ", times)
-                print("amplitude ", amplitude)
-                # print("self.sheets[rf_type].pop.set(i_offset=amplitude) ", self.sheets[rf_type].pop.get("i_offset"))
-                # print("zers + amplitude ", zers + amplitude)
-                # a = zers + amplitude
-                # self.sheets[rf_type].pop.set(i_offset=a[n])
-                self.sheets[rf_type].pop.set(i_offset=amplitude)
-                # print("self.sheets[rf_type].pop.set(i_offset=amplitude) ", self.sheets[rf_type].pop.get("i_offset"))
-                # self.parameters.mpi_reproducible_noise part ?
-                # for i, (scs, ncs) in enumerate(zip(self.scs[rf_type], self.ncs[rf_type])):
-                #    print("scs ", scs)
-                #    scs.set_parameters(times=times, amplitudes=zers + amplitude, copy=False)  # this has to change
-                #    print("self.parameters.mpi_reproducible_noise ", self.parameters.mpi_reproducible_noise)
-                #    if self.parameters.mpi_reproducible_noise:
-                #        t = numpy.arange(0, duration, ts) + offset
-                #        amplitudes = self.parameters.noise.mean + self.parameters.noise.stdev * self.ncs_rng[
-                #            rf_type
-                #        ][
-                #            i
-                #        ].randn(
-                #            len(t)
-                #        )
-                #        ncs.set_parameters(times=t, amplitudes=amplitudes, copy=False)
-            # find a better way, this works only if the times length is 2
-            # self.model.simulator_time += self.model.sim.run(duration / 2)
-            # sometimes times[0] is not 0, what then?
-            # if t == times[-1]:
-            #    self.model.simulator_time += self.model.sim.run(duration - t)
-            # else:
-            #    self.model.simulator_time += self.model.sim.run(times[n+1] - times[n])
-            # self.model.sim.set_number_of_neurons_per_core(self.model.sim.Izhikevich, 2047)
-            # self.model.sim.set_number_of_neurons_per_core(self.model.sim.IF_cond_exp, 2047)
-            if n == 0:
-                print("1. duration - visual_space.update_interval ", duration - visual_space.update_interval)
-                self.model.simulator_time += self.model.sim.run(duration - visual_space.update_interval)
-            elif n == 1:
-                print("2. visual_space.update_interval ", visual_space.update_interval)
-                self.model.simulator_time += self.model.sim.run(visual_space.update_interval)
-            # self.model.simulator_time += self.model.sim.run(duration / i)
-            # self.model.simulator_time += self.model.sim.run(duration)
+        for rf_type in self.rf_types:
+            if self.parameters.gain_control.non_linear_gain != None:
+                amplitude = self.parameters.linear_scaler * self.parameters.gain_control.non_linear_gain.luminance_gain * numpy.sum(
+                    input_cells[rf_type].receptive_field.kernel.flatten()) * visual_space.background_luminance / (
+                                        self.parameters.gain_control.non_linear_gain.luminance_scaler * visual_space.background_luminance + 1.0)
+            else:
+                amplitude = self.parameters.linear_scaler * self.parameters.gain_control.gain * numpy.sum(
+                    input_cells[rf_type].receptive_field.kernel.flatten()) * visual_space.background_luminance
+
+            for i, (scs, ncs) in enumerate(zip(self.scs[rf_type], self.ncs[rf_type])):
+                scs.set_parameters(times=times, amplitudes=zers + amplitude, copy=False)
+                if self.parameters.mpi_reproducible_noise:
+                    t = numpy.arange(0, duration, ts) + offset
+                    amplitudes = (self.parameters.noise.mean
+                                  + self.parameters.noise.stdev
+                                  * self.ncs_rng[rf_type][i].randn(len(t)))
+                    ncs.set_parameters(times=t, amplitudes=amplitudes, copy=False)
 
     def _calculate_input_currents(self, visual_space, duration):
         """

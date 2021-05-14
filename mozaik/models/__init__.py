@@ -170,7 +170,7 @@ class Model(BaseComponent):
                 # sim_run_time += self.run(stimulus.duration)
         else:
             sensory_input = None
-            sim_run_time += self.run(stimulus.duration)
+            # sim_run_time += self.run(stimulus.duration)
 
         # multiple runs here with i_offset update ?
         # pop = sim.Population(...)
@@ -178,6 +178,7 @@ class Model(BaseComponent):
         # print("stimulus.duration ", stimulus.duration)
         # if not r:
         #    sim_run_time += self.run(stimulus.duration)
+        sim_run_time += self.run(stimulus.duration)
         segments = []
 
         for sheet in list(self.sheets.values()):
@@ -261,14 +262,14 @@ class Model(BaseComponent):
                         self.simulator_time
                     )
                     logger.info(
-                        "Simulated the network for %s ms with blank stimulus"
-                        % self.parameters.null_stimulus_period
-                    )
-                else:
-                    logger.info(
                         "Simulating the network for %s ms with blank stimulus"
                         % self.parameters.null_stimulus_period
                     )
+                    # else:
+                    #    logger.info(
+                    #        "Simulating the network for %s ms with blank stimulus"
+                    #        % self.parameters.null_stimulus_period
+                    #    )
                     # print("self.parameters.max_delay ", self.parameters.max_delay)
                     # print("self.parameters ", self.parameters)
                     # print("dir(self.sim) ", dir(self.sim))
